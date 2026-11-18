@@ -35,7 +35,7 @@ install_core(){
   case "$(uname -m)" in x86_64) arch=amd64;; aarch64|arm64) arch=arm64;; esac
   asset="spoof-linux-${arch}"
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
+  trap 'rm -rf "$tmp"; trap - RETURN' RETURN
   say "دریافت هسته رسمی Spoof Tunnel ${RELEASE} برای linux/${arch}"
   curl -fL --proto '=https' --tlsv1.2 "${UPSTREAM}/releases/download/${RELEASE}/${asset}" -o "${tmp}/${asset}"
   curl -fL --proto '=https' --tlsv1.2 "${UPSTREAM}/releases/download/${RELEASE}/checksums.txt" -o "${tmp}/checksums.txt"
@@ -186,7 +186,7 @@ install_panel(){
   warn "اکنون نصب‌کننده رسمی پنل از مخزن بالادستی اجرا می‌شود."
   read -r -p "ادامه؟ (y/N): " a
   [[ "${a,,}" == y || "${a,,}" == yes ]] || return
-  local tmp; tmp="$(mktemp)"; trap 'rm -f "$tmp"' RETURN
+  local tmp; tmp="$(mktemp)"; trap 'rm -f "$tmp"; trap - RETURN' RETURN
   curl -fL --proto '=https' --tlsv1.2 "$PANEL_INSTALLER" -o "$tmp"
   bash -n "$tmp"; bash "$tmp"
 }
