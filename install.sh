@@ -398,6 +398,24 @@ uninstall_core(){
   ok "هسته حذف شد؛ کانفیگ در ${CORE_CONFIG} باقی ماند."
 }
 
+
+easy_install(){
+  say "نصب آسان: اسکریپت هسته را نصب می‌کند، چند سؤال ساده می‌پرسد و سرویس را راه‌اندازی می‌کند."
+  if [[ -f "$CORE_CONFIG" ]]; then
+    warn "کانفیگ قبلی پیدا شد؛ قبل از تغییر، پشتیبان گرفته می‌شود."
+    core_backup
+  fi
+  install_core || return 1
+  configure_core || return 1
+  echo
+  read -r -p "پنل وب فارسی برای مدیریت از مرورگر هم نصب شود؟ (Y/n): " web_choice
+  if [[ "${web_choice,,}" != n && "${web_choice,,}" != no ]]; then
+    install_web_panel || warn "هسته نصب شده؛ نصب پنل وب کامل نشد. بعداً گزینه ۱۴ را اجرا کنید."
+  fi
+  ok "مراحل نصب آسان به پایان رسید."
+  systemctl --no-pager --full status "$CORE_SERVICE" || true
+}
+
 menu(){
  while true; do
   clear || true
@@ -406,42 +424,44 @@ menu(){
   echo "║          مدیریت فارسی Spoof Tunnel                 ║"
   echo "╚════════════════════════════════════════════════════╝"
   printf "%b\n" "$NC"
-  echo "  1) نصب/به‌روزرسانی هسته رسمی"
-  echo "  2) ساخت یا ویرایش کانفیگ local/remote"
-  echo "  3) وضعیت سرویس هسته"
-  echo "  4) گزارش‌های هسته"
-  echo "  5) راه‌اندازی مجدد هسته"
-  echo "  6) پشتیبان‌گیری از کانفیگ هسته"
-  echo "  7) حذف هسته (با حفظ کانفیگ)"
-  echo "  8) نصب پنل رسمی"
-  echo "  9) وضعیت پنل"
-  echo " 10) گزارش‌های پنل"
-  echo " 11) پشتیبان‌گیری از داده پنل"
-  echo " 12) بازیابی پشتیبان کانفیگ هسته"
-  echo " 13) بررسی سلامت سیستم و کانفیگ"
-  echo " 14) نصب/به‌روزرسانی پنل وب فارسی"
-  echo " 15) وضعیت پنل وب"
-  echo " 16) گزارش‌های پنل وب"
+  echo "  1) نصب آسان و راه‌اندازی کامل (پیشنهادی)"
+  echo "  2) فقط نصب/به‌روزرسانی هسته رسمی"
+  echo "  3) ساخت یا ویرایش کانفیگ local/remote"
+  echo "  4) وضعیت سرویس هسته"
+  echo "  5) گزارش‌های هسته"
+  echo "  6) راه‌اندازی مجدد هسته"
+  echo "  7) پشتیبان‌گیری از کانفیگ هسته"
+  echo "  8) حذف هسته (با حفظ کانفیگ)"
+  echo "  9) نصب پنل رسمی"
+  echo " 10) وضعیت پنل"
+  echo " 11) گزارش‌های پنل"
+  echo " 12) پشتیبان‌گیری از داده پنل"
+  echo " 13) بازیابی پشتیبان کانفیگ هسته"
+  echo " 14) بررسی سلامت سیستم و کانفیگ"
+  echo " 15) نصب/به‌روزرسانی پنل وب فارسی"
+  echo " 16) وضعیت پنل وب"
+  echo " 17) گزارش‌های پنل وب"
   echo "  0) خروج"
   echo
   read -r -p "انتخاب شما: " choice
   case "$choice" in
-    1) install_core; pause;;
-    2) configure_core; pause;;
-    3) core_status; pause;;
-    4) core_logs; pause;;
-    5) core_restart; pause;;
-    6) core_backup; pause;;
-    7) uninstall_core; pause;;
-    8) install_panel; pause;;
-    9) panel_status; pause;;
-    10) panel_logs; pause;;
-    11) panel_backup; pause;;
-    12) restore_core_backup; pause;;
-    13) system_health; pause;;
-    14) install_web_panel; pause;;
-    15) web_panel_status; pause;;
-    16) web_panel_logs; pause;;
+    1) easy_install; pause;;
+    2) install_core; pause;;
+    3) configure_core; pause;;
+    4) core_status; pause;;
+    5) core_logs; pause;;
+    6) core_restart; pause;;
+    7) core_backup; pause;;
+    8) uninstall_core; pause;;
+    9) install_panel; pause;;
+    10) panel_status; pause;;
+    11) panel_logs; pause;;
+    12) panel_backup; pause;;
+    13) restore_core_backup; pause;;
+    14) system_health; pause;;
+    15) install_web_panel; pause;;
+    16) web_panel_status; pause;;
+    17) web_panel_logs; pause;;
     0) exit 0;;
     *) warn "گزینه نامعتبر است."; pause;;
   esac
