@@ -10,6 +10,9 @@ readonly CORE_BIN="/usr/local/bin/spoof"
 readonly CORE_SERVICE="spoof-tunnel"
 readonly CORE_CONFIG="${CORE_DIR}/config.json"
 readonly PANEL_DATA="/etc/spoof-panel"
+readonly WEB_PANEL_DIR="/opt/persian-spoof-panel"
+readonly WEB_PANEL_SERVICE="persian-spoof-panel"
+readonly WEB_PANEL_APP="https://raw.githubusercontent.com/metallica1495/Persian-Spoof-Tunnel/main/panel/app.py"
 readonly BACKUP_DIR="/root/persian-spoof-tunnel-backups"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -293,6 +296,55 @@ panel_backup(){
   mkdir -p "$BACKUP_DIR"; local out="$BACKUP_DIR/panel-$(date +%Y%m%d-%H%M%S).tar.gz"
   tar -czf "$out" -C /etc spoof-panel; chmod 600 "$out"; ok "پشتیبان: $out"
 }
+
+install_web_panel(){
+  command -v python3 >/dev/null || { err "برای پنل وب ابتدا python3 نصب کنید."; return 1; }
+  mkdir -p "$WEB_PANEL_DIR" /etc/persian-spoof-panel
+  chmod 700 /etc/persian-spoof-panel
+  local tmp; tmp="$(mktemp)"
+  curl -fL --proto '=https' --tlsv1.2 "$WEB_PANEL_APP" -o "$tmp" || { rm -f "$tmp"; err "دریافت پنل ناموفق بود."; return 1; }
+  python3 -m py_compile "$tmp" || { rm -f "$tmp"; err "بررسی کد پنل ناموفق بود."; return 1; }
+  install -m 700 "$tmp" "$WEB_PANEL_DIR/app.py"
+  rm -f "$tmp"
+  if [[ ! -f /etc/persian-spoof-panel/auth.json ]]; then
+    echo "اکنون حساب مدیر پنل وب را بسازید:"
+    python3 "$WEB_PANEL_DIR/app.py" --setup-admin || return 1
+  else
+    warn "حساب مدیر قبلی حفظ شد."
+  fi
+  cat > "/etc/systemd/system/${WEB_PANEL_SERVICE}.service" <<EOF
+[Unit]
+Description=Persian Spoof Tunnel Web Admin Panel
+After=network.target spoof-tunnel.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${WEB_PANEL_DIR}/app.py --serve
+WorkingDirectory=${WEB_PANEL_DIR}
+User=root
+Group=root
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/persian-spoof-panel
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now "$WEB_PANEL_SERVICE"
+  ok "پنل وب نصب و اجرا شد."
+  echo "آدرس محلی: http://127.0.0.1:8787"
+  echo "دسترسی امن از رایانه: ssh -L 8787:127.0.0.1:8787 root@SERVER_IP"
+  echo "سپس در مرورگر: http://127.0.0.1:8787"
+  warn "پورت 8787 را مستقیماً در اینترنت باز نکنید."
+}
+web_panel_status(){ systemctl --no-pager --full status "$WEB_PANEL_SERVICE" || true; }
+web_panel_logs(){ journalctl -u "$WEB_PANEL_SERVICE" -n 100 --no-pager || true; }
+
 uninstall_core(){
   warn "این کار سرویس و باینری هسته را حذف می‌کند؛ فایل کانفیگ حفظ می‌شود."
   read -r -p "برای تأیید REMOVE بنویسید: " a
@@ -324,6 +376,9 @@ menu(){
   echo " 11) پشتیبان‌گیری از داده پنل"
   echo " 12) بازیابی پشتیبان کانفیگ هسته"
   echo " 13) بررسی سلامت سیستم و کانفیگ"
+  echo " 14) نصب/به‌روزرسانی پنل وب فارسی"
+  echo " 15) وضعیت پنل وب"
+  echo " 16) گزارش‌های پنل وب"
   echo "  0) خروج"
   echo
   read -r -p "انتخاب شما: " choice
@@ -341,6 +396,9 @@ menu(){
     11) panel_backup; pause;;
     12) restore_core_backup; pause;;
     13) system_health; pause;;
+    14) install_web_panel; pause;;
+    15) web_panel_status; pause;;
+    16) web_panel_logs; pause;;
     0) exit 0;;
     *) warn "گزینه نامعتبر است."; pause;;
   esac
