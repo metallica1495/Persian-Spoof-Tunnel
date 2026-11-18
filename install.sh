@@ -104,20 +104,25 @@ ask_transport(){
   case "$value" in tcp|udp|icmp|icmpv6) printf '%s' "$value";; *) err "نوع انتقال نامعتبر است."; return 1;; esac
 }
 
-configure_core(){
-  [[ -x "$CORE_BIN" ]] || { warn "ابتدا گزینه نصب هسته را اجرا کنید."; return 1; }
-  local mode spoof_ip spoof_file spoof_port peer send recv xdp
-  local listen remote remote_port recv_port listen_port forward client_ip client_port
+ask_server_location(){
   echo
-  say "مرحله ۱ از ۳: محل سرور"
-  echo "  1) سرور داخل ایران"
-  echo "  2) سرور خارج از ایران"
-  read -r -p "محل این سرور را انتخاب کنید [1]: " location_choice
+  say "اول یک سؤال کوتاه: این سرور کجاست؟"
+  echo "  1) ایران"
+  echo "  2) خارج از ایران"
+  read -r -p "محل سرور [1]: " location_choice
   case "${location_choice:-1}" in
-    1) server_location="iran"; say "سرور ایران انتخاب شد.";;
-    2) server_location="abroad"; say "سرور خارج از ایران انتخاب شد.";;
+    1) SERVER_LOCATION="iran"; say "سرور ایران انتخاب شد.";;
+    2) SERVER_LOCATION="abroad"; say "سرور خارج از ایران انتخاب شد.";;
     *) err "گزینه نامعتبر است."; return 1;;
   esac
+}
+
+configure_core(){
+  [[ -x "$CORE_BIN" ]] || { warn "ابتدا گزینه نصب هسته را اجرا کنید."; return 1; }
+  local mode spoof_ip spoof_file spoof_port peer send recv xdp server_location
+  local listen remote remote_port recv_port listen_port forward client_ip client_port
+  [[ -n "${SERVER_LOCATION:-}" ]] || ask_server_location || return 1
+  server_location="$SERVER_LOCATION"
 
   echo
   say "مرحله ۲ از ۳: نقش این سرور"
@@ -402,6 +407,8 @@ uninstall_core(){
 
 easy_install(){
   say "نصب آسان: اسکریپت هسته را نصب می‌کند، چند سؤال ساده می‌پرسد و سرویس را راه‌اندازی می‌کند."
+  unset SERVER_LOCATION
+  ask_server_location || return 1
   if [[ -f "$CORE_CONFIG" ]]; then
     warn "کانفیگ قبلی پیدا شد؛ قبل از تغییر، پشتیبان گرفته می‌شود."
     core_backup
@@ -414,6 +421,7 @@ easy_install(){
   if [[ "${web_choice,,}" != n && "${web_choice,,}" != no ]]; then
     install_web_panel || warn "هسته نصب شده؛ نصب پنل وب کامل نشد. بعداً گزینه ۱۴ را اجرا کنید."
   fi
+  unset SERVER_LOCATION
   ok "مراحل نصب آسان به پایان رسید."
   systemctl --no-pager --full status "$CORE_SERVICE" || true
 }
