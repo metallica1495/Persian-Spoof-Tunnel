@@ -1,4 +1,4 @@
-name: Shell syntax check
+name: Project checks
 
 on:
   push:
@@ -7,9 +7,11 @@ on:
     branches: [main]
 
 jobs:
-  bash-syntax:
+  syntax:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate installer syntax
+      - name: Validate Bash installer
         run: bash -n install.sh
+      - name: Validate Python web panel
+        run: python3 -m py_compile panel/app.py
