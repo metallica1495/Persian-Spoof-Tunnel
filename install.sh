@@ -394,6 +394,48 @@ EOF
 web_panel_status(){ systemctl --no-pager --full status "$WEB_PANEL_SERVICE" || true; }
 web_panel_logs(){ journalctl -u "$WEB_PANEL_SERVICE" -n 100 --no-pager || true; }
 
+
+network_diagnostics(){
+  say "بررسی خودکار شبکه و فایروال (بدون اعمال تغییر)"
+  echo
+  echo "نام میزبان: $(hostname 2>/dev/null || echo نامشخص)"
+  echo "IPهای تنظیم‌شده روی سرور:"
+  if command -v ip >/dev/null 2>&1; then
+    ip -brief address 2>/dev/null || ip address show 2>/dev/null | grep -E '^[0-9]+:|inet '
+    echo
+    echo "مسیر پیش‌فرض اینترنت:"
+    ip route show default 2>/dev/null || true
+  else
+    warn "ابزار ip نصب نیست؛ بسته iproute2 را نصب کنید."
+  fi
+  echo
+  echo "IP عمومی مشاهده‌شده از اینترنت:"
+  local public_ip=""
+  public_ip="$(curl -4fsS --connect-timeout 4 --max-time 8 https://api.ipify.org 2>/dev/null || true)"
+  if [[ -n "$public_ip" ]] && valid_ip "$public_ip"; then
+    echo "$public_ip"
+  else
+    warn "IP عمومی خودکار قابل تشخیص نبود؛ ممکن است ارتباط خروجی محدود باشد."
+  fi
+  echo
+  echo "وضعیت ابزارهای فایروال:"
+  if command -v ufw >/dev/null 2>&1; then
+    ufw status verbose 2>&1 | head -n 20
+  elif command -v firewall-cmd >/dev/null 2>&1; then
+    firewall-cmd --state 2>&1 || true
+    firewall-cmd --list-all 2>&1 | head -n 30 || true
+  elif command -v nft >/dev/null 2>&1; then
+    nft list ruleset 2>&1 | head -n 35 || true
+  elif command -v iptables >/dev/null 2>&1; then
+    iptables -S 2>&1 | head -n 35 || true
+  else
+    warn "ابزار شناخته‌شده فایروال پیدا نشد."
+  fi
+  echo
+  warn "این گزارش فقط وضعیت را می‌خواند؛ هیچ پورتی باز یا بسته نمی‌شود."
+  warn "برای جلوگیری از قطع SSH، تغییر فایروال باید بر اساس پورت واقعی سرویس و با تأیید مدیر انجام شود."
+}
+
 uninstall_core(){
   warn "این کار سرویس و باینری هسته را حذف می‌کند؛ فایل کانفیگ حفظ می‌شود."
   read -r -p "برای تأیید REMOVE بنویسید: " a
@@ -451,6 +493,7 @@ menu(){
   echo " 15) نصب/به‌روزرسانی پنل وب فارسی"
   echo " 16) وضعیت پنل وب"
   echo " 17) گزارش‌های پنل وب"
+  echo " 18) تشخیص خودکار IP و بررسی فایروال (فقط گزارش)"
   echo "  0) خروج"
   echo
   read -r -p "انتخاب شما: " choice
@@ -472,6 +515,7 @@ menu(){
     15) install_web_panel; pause;;
     16) web_panel_status; pause;;
     17) web_panel_logs; pause;;
+    18) network_diagnostics; pause;;
     0) exit 0;;
     *) warn "گزینه نامعتبر است."; pause;;
   esac
