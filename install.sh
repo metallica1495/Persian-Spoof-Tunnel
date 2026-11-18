@@ -139,6 +139,7 @@ else:
 with open(sys.argv[1],"w",encoding="utf-8") as f: json.dump(c,f,ensure_ascii=False,indent=2); f.write("\n")
 os.chmod(sys.argv[1],0o600)
 PY
+  validate_config_file "$CORE_CONFIG" || { err "کانفیگ معتبر نیست؛ سرویس ساخته نشد."; return 1; }
   cat > "/etc/systemd/system/${CORE_SERVICE}.service" <<EOF
 [Unit]
 Description=Persian Spoof Tunnel Core (${mode})
@@ -164,6 +165,101 @@ EOF
   else
     ok "کانفیگ در ${CORE_CONFIG} ذخیره شد؛ سرویس هنوز اجرا نشده است."
   fi
+}
+
+
+validate_config_file(){
+  local file="${1:-$CORE_CONFIG}"
+  [[ -r "$file" ]] || { err "فایل کانفیگ خواندنی نیست: $file"; return 1; }
+  python3 - "$file" <<'PY'
+import ipaddress,json,os,sys
+p=sys.argv[1]
+try:
+    with open(p,encoding="utf-8") as f: c=json.load(f)
+except Exception as e:
+    raise SystemExit("JSON نامعتبر: "+str(e))
+if c.get("mode") not in ("local","remote"): raise SystemExit("mode باید local یا remote باشد")
+for k in ("spoof_ip","peer_spoof_ip","remote","client_ip"):
+    if c.get(k):
+        try: ipaddress.ip_address(c[k])
+        except ValueError: raise SystemExit(k+" باید IP معتبر باشد")
+for k in ("spoof_port","remote_port","recv_port","listen_port","client_port"):
+    if k in c and not (1 <= int(c[k]) <= 65535): raise SystemExit(k+" خارج از محدوده پورت است")
+for k in ("send_transport","recv_transport"):
+    if c.get(k) and c[k] not in ("tcp","udp","icmp","icmpv6"): raise SystemExit(k+" نامعتبر است")
+if not c.get("spoof_ip") and not c.get("spoof_ip_file"): raise SystemExit("spoof_ip یا spoof_ip_file الزامی است")
+if c["mode"]=="local":
+    for k in ("listen","remote","remote_port","recv_port"): 
+        if not c.get(k): raise SystemExit(k+" برای حالت local الزامی است")
+else:
+    for k in ("listen_port","forward","client_ip","client_port"):
+        if not c.get(k): raise SystemExit(k+" برای حالت remote الزامی است")
+if c.get("spoof_ip_file"):
+    path=c["spoof_ip_file"]
+    if not os.path.isabs(path) or not os.path.isfile(path) or not os.access(path,os.R_OK):
+        raise SystemExit("فایل لیست IP باید مسیر مطلق و قابل خواندن داشته باشد")
+    count=0
+    with open(path,encoding="utf-8") as f:
+        for n,line in enumerate(f,1):
+            line=line.strip()
+            if not line or line.startswith("#"): continue
+            try: ip=ipaddress.ip_address(line)
+            except ValueError: raise SystemExit(f"IP نامعتبر در خط {n}")
+            if ip.version != 4: raise SystemExit(f"فقط IPv4 پشتیبانی می‌شود؛ خط {n}")
+            count+=1
+    if count==0: raise SystemExit("فایل لیست IP خالی است")
+print("ساختار کانفیگ معتبر است.")
+PY
+}
+
+restore_core_backup(){
+  [[ -d "$BACKUP_DIR" ]] || { warn "پوشه پشتیبان وجود ندارد."; return; }
+  local file
+  echo "پشتیبان‌های کانفیگ:"
+  find "$BACKUP_DIR" -maxdepth 1 -type f -name 'core-config-*.json' -printf '%f\\n' | sort
+  read -r -p "نام دقیق فایل: " file
+  [[ "$file" =~ ^core-config-[0-9-]+\\.json$ ]] || { err "نام فایل نامعتبر است."; return; }
+  local src="$BACKUP_DIR/$file"
+  [[ -f "$src" ]] || { err "فایل پیدا نشد."; return; }
+  validate_config_file "$src" || return 1
+  read -r -p "کانفیگ فعلی جایگزین شود و سرویس متوقف گردد؟ (y/N): " answer
+  [[ "${answer,,}" == y || "${answer,,}" == yes ]] || return
+  systemctl stop "$CORE_SERVICE" 2>/dev/null || true
+  install -m 600 "$src" "$CORE_CONFIG"
+  ok "کانفیگ بازیابی شد."
+  read -r -p "سرویس دوباره اجرا شود؟ (y/N): " start
+  if [[ "${start,,}" == y || "${start,,}" == yes ]]; then
+    systemctl enable --now "$CORE_SERVICE"
+  fi
+}
+
+system_health(){
+  say "گزارش سلامت سیستم"
+  echo "سیستم‌عامل: $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-نامشخص}")"
+  echo "کرنل: $(uname -r)"
+  echo "معماری: $(uname -m)"
+  echo "فضای دیسک:"
+  df -h / | tail -n 1
+  echo "حافظه:"
+  free -h 2>/dev/null | head -n 2 || true
+  echo "زمان سیستم:"
+  timedatectl status 2>/dev/null | head -n 5 || true
+  if [[ -x "$CORE_BIN" ]]; then
+    echo "نسخه هسته:"
+    "$CORE_BIN" --version 2>&1 || true
+    echo "فرمان‌های پشتیبانی‌شده:"
+    "$CORE_BIN" --help 2>&1 | head -n 24 || true
+  else
+    warn "هسته هنوز نصب نشده است."
+  fi
+  if [[ -f "$CORE_CONFIG" ]]; then
+    echo "اعتبار کانفیگ:"
+    validate_config_file "$CORE_CONFIG" || true
+  else
+    warn "کانفیگ هسته هنوز ساخته نشده است."
+  fi
+  echo "وضعیت سرویس:"
+  systemctl is-active "$CORE_SERVICE" 2>/dev/null || true
 }
 
 core_status(){
@@ -226,6 +322,8 @@ menu(){
   echo "  9) وضعیت پنل"
   echo " 10) گزارش‌های پنل"
   echo " 11) پشتیبان‌گیری از داده پنل"
+  echo " 12) بازیابی پشتیبان کانفیگ هسته"
+  echo " 13) بررسی سلامت سیستم و کانفیگ"
   echo "  0) خروج"
   echo
   read -r -p "انتخاب شما: " choice
@@ -241,6 +339,8 @@ menu(){
     9) panel_status; pause;;
     10) panel_logs; pause;;
     11) panel_backup; pause;;
+    12) restore_core_backup; pause;;
+    13) system_health; pause;;
     0) exit 0;;
     *) warn "گزینه نامعتبر است."; pause;;
   esac
