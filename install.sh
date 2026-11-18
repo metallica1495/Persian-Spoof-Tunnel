@@ -28,7 +28,7 @@ install_dependencies(){
   command -v python3 >/dev/null || missing+=(python3)
   command -v sha256sum >/dev/null || missing+=(coreutils)
   command -v tar >/dev/null || missing+=(tar)
-  (("${#missing[@]}" == 0)) && { ok "پیش‌نیازهای لازم نصب هستند."; return 0; }
+  (( ${#missing[@]} == 0 )) && { ok "پیش‌نیازهای لازم نصب هستند."; return 0; }
   say "پیش‌نیازهای لازم پیدا نشد؛ نصب خودکار آغاز می‌شود: ${missing[*]}"
   if command -v apt-get >/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
@@ -146,8 +146,8 @@ configure_core(){
     valid_ip "$remote" || { err "IP سرور نامعتبر است."; return 1; }
     remote_port="$(ask_port "پورت سرور مقابل" 8090)" || return 1
     recv_port="$(ask_port "پورت دریافت روی این سرور" 5001)" || return 1
-    send="$(ask_transport "نوع ارتباط خروجی (اگر مطمئن نیستید Enter بزنید)" tcp)" || return 1
-    recv="$(ask_transport "نوع ارتباط ورودی (اگر مطمئن نیستید Enter بزنید)" udp)" || return 1
+    send="tcp"
+    recv="udp"
     listen_port=0; forward=""; client_ip=""; client_port=0
   else
     listen_port="$(ask_port "پورت دریافت روی سرور" 8090)" || return 1
@@ -156,8 +156,8 @@ configure_core(){
     read -r -p "IP عمومی سرور local (از ارائه‌دهنده سرور بگیرید): " client_ip
     valid_ip "$client_ip" || { err "IP کلاینت نامعتبر است."; return 1; }
     client_port="$(ask_port "پورت دریافت سمت local" 5001)" || return 1
-    send="$(ask_transport "نوع ارتباط خروجی (اگر مطمئن نیستید Enter بزنید)" udp)" || return 1
-    recv="$(ask_transport "نوع ارتباط ورودی (اگر مطمئن نیستید Enter بزنید)" tcp)" || return 1
+    send="udp"
+    recv="tcp"
     listen=""; remote=""; remote_port=0; recv_port=0
   fi
   xdp=""
