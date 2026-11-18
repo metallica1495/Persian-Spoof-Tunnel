@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  syntax:
+  syntax-and-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Bash installer
+      - name: Validate Bash installer syntax
         run: bash -n install.sh
-      - name: Validate Python web panel
-        run: python3 -m py_compile panel/app.py
+      - name: Compile Python panel
+        run: python3 -m py_compile panel/app.py panel/test_app.py
+      - name: Run panel unit tests
+        run: python3 -m unittest discover -s panel -p 'test_*.py' -v
