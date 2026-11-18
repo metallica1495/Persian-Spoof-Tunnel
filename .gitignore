@@ -1,0 +1,14 @@
+# Local server data and secrets
+.env
+*.env
+*.key
+*.pem
+*.secret
+config*.json
+*.conf
+*.db
+*.sqlite*
+*.tar
+*.tar.gz
+backups/
+logs/
