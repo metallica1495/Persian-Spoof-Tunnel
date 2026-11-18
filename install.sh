@@ -22,13 +22,40 @@ warn(){ printf "%b%s%b\n" "$YELLOW" "$*" "$NC"; }
 err(){ printf "%b%s%b\n" "$RED" "$*" "$NC" >&2; }
 pause(){ read -r -p "برای ادامه Enter بزنید... " _; }
 
+install_dependencies(){
+  local missing=()
+  command -v curl >/dev/null || missing+=(curl)
+  command -v python3 >/dev/null || missing+=(python3)
+  command -v sha256sum >/dev/null || missing+=(coreutils)
+  command -v tar >/dev/null || missing+=(tar)
+  (("${#missing[@]}" == 0)) && { ok "پیش‌نیازهای لازم نصب هستند."; return 0; }
+  say "پیش‌نیازهای لازم پیدا نشد؛ نصب خودکار آغاز می‌شود: ${missing[*]}"
+  if command -v apt-get >/dev/null; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y curl python3 ca-certificates coreutils gawk tar
+  elif command -v dnf >/dev/null; then
+    dnf install -y curl python3 ca-certificates coreutils gawk tar
+  elif command -v yum >/dev/null; then
+    yum install -y curl python3 ca-certificates coreutils gawk tar
+  elif command -v zypper >/dev/null; then
+    zypper --non-interactive install curl python3 ca-certificates coreutils gawk tar
+  else
+    err "مدیر بسته شناخته‌شده پیدا نشد. curl، python3، sha256sum و tar را نصب کنید."
+    return 1
+  fi
+  command -v curl >/dev/null && command -v python3 >/dev/null && command -v sha256sum >/dev/null || {
+    err "نصب خودکار پیش‌نیازها کامل نشد."; return 1;
+  }
+  ok "پیش‌نیازها با موفقیت نصب شدند."
+}
+
 need_root(){
-  [[ "${EUID}" -eq 0 ]] || { err "با root اجرا کنید: sudo bash install.sh"; exit 1; }
+  [[ "${EUID}" -eq 0 ]] || { err "برای نصب خودکار پیش‌نیازها، با root اجرا کنید: sudo bash install.sh"; exit 1; }
   [[ "$(uname -s)" == Linux ]] || { err "فقط Linux پشتیبانی می‌شود."; exit 1; }
-  command -v curl >/dev/null || { err "curl نصب نیست."; exit 1; }
-  command -v systemctl >/dev/null || { err "systemd در دسترس نیست."; exit 1; }
-  command -v python3 >/dev/null || { err "python3 نصب نیست."; exit 1; }
+  command -v systemctl >/dev/null || { err "این سرور systemd ندارد؛ این نسخه فقط روی توزیع‌های Linux مجهز به systemd اجرا می‌شود."; exit 1; }
   case "$(uname -m)" in x86_64|aarch64|arm64) ;; *) err "معماری پشتیبانی نمی‌شود: $(uname -m)"; exit 1;; esac
+  install_dependencies || exit 1
   . /etc/os-release 2>/dev/null || true
   say "سیستم: ${PRETTY_NAME:-Linux} | معماری: $(uname -m)"
 }
@@ -80,14 +107,30 @@ configure_core(){
   [[ -x "$CORE_BIN" ]] || { warn "ابتدا گزینه نصب هسته را اجرا کنید."; return 1; }
   local mode spoof_ip spoof_file spoof_port peer send recv xdp
   local listen remote remote_port recv_port listen_port forward client_ip client_port
-  echo "نقش این سرور را انتخاب کنید:"
-  echo "  1) local (سمت محلی)"
-  echo "  2) remote (سمت سرور مقابل)"
-  read -r -p "انتخاب [1]: " role
+  echo
+  say "مرحله ۱ از ۳: محل سرور"
+  echo "  1) سرور داخل ایران"
+  echo "  2) سرور خارج از ایران"
+  read -r -p "محل این سرور را انتخاب کنید [1]: " location_choice
+  case "${location_choice:-1}" in
+    1) server_location="iran"; say "سرور ایران انتخاب شد.";;
+    2) server_location="abroad"; say "سرور خارج از ایران انتخاب شد.";;
+    *) err "گزینه نامعتبر است."; return 1;;
+  esac
+
+  echo
+  say "مرحله ۲ از ۳: نقش این سرور"
+  echo "  1) این سرور سمت کاربر/برنامه است (local)"
+  echo "  2) این سرور سمت مقابل است (remote)"
+  echo "نکته: ایرانی یا خارجی بودن به‌تنهایی نقش را تعیین نمی‌کند."
+  read -r -p "نقش این سرور را انتخاب کنید [1]: " role
   case "${role:-1}" in 1) mode=local;; 2) mode=remote;; *) err "انتخاب نامعتبر"; return 1;; esac
 
-  read -r -p "یک IP مجاز برای استفاده به‌عنوان spoof-ip (خالی برای استفاده از فایل): " spoof_ip
-  read -r -p "مسیر مطلق فایل IPها (در صورت عدم استفاده از IP تکی، خالی برای رد): " spoof_file
+  echo
+  say "مرحله ۳ از ۳: اطلاعات اتصال"
+  echo "IPهای لازم را از پنل ارائه‌دهنده سرور یا مدیر شبکه بگیرید."
+  read -r -p "IP مجاز و متعلق به شما برای تنظیم spoof-ip (اجباری): " spoof_ip
+  read -r -p "مسیر فایل IPها (اگر فایل ندارید Enter بزنید): " spoof_file
   if [[ -n "$spoof_ip" ]]; then valid_ip "$spoof_ip" || { err "IP نامعتبر است."; return 1; }; fi
   if [[ -n "$spoof_file" ]]; then
     [[ "$spoof_file" == /* && -r "$spoof_file" ]] || { err "فایل باید مسیر مطلق و قابل‌خواندن باشد."; return 1; }
@@ -99,25 +142,25 @@ configure_core(){
   if [[ "$mode" == local ]]; then
     read -r -p "آدرس UDP محلی برای برنامه (127.0.0.1:5000): " listen
     listen="${listen:-127.0.0.1:5000}"
-    read -r -p "IP واقعی سرور مقابل: " remote
+    read -r -p "IP عمومی سرور مقابل (از ارائه‌دهنده سرور بگیرید): " remote
     valid_ip "$remote" || { err "IP سرور نامعتبر است."; return 1; }
     remote_port="$(ask_port "پورت سرور مقابل" 8090)" || return 1
     recv_port="$(ask_port "پورت دریافت روی این سرور" 5001)" || return 1
-    send="$(ask_transport "ترنسپورت ارسال از این سمت" tcp)" || return 1
-    recv="$(ask_transport "ترنسپورت دریافت از سمت مقابل" udp)" || return 1
+    send="$(ask_transport "نوع ارتباط خروجی (اگر مطمئن نیستید Enter بزنید)" tcp)" || return 1
+    recv="$(ask_transport "نوع ارتباط ورودی (اگر مطمئن نیستید Enter بزنید)" udp)" || return 1
     listen_port=0; forward=""; client_ip=""; client_port=0
   else
     listen_port="$(ask_port "پورت دریافت روی سرور" 8090)" || return 1
     read -r -p "آدرس UDP مقصد برای فوروارد (مثلاً 127.0.0.1:51820): " forward
     [[ "$forward" =~ ^[A-Za-z0-9.\[\]:_-]+:[0-9]{1,5}$ ]] || { err "آدرس مقصد باید به‌شکل host:port باشد."; return 1; }
-    read -r -p "IP واقعی سرور local: " client_ip
+    read -r -p "IP عمومی سرور local (از ارائه‌دهنده سرور بگیرید): " client_ip
     valid_ip "$client_ip" || { err "IP کلاینت نامعتبر است."; return 1; }
     client_port="$(ask_port "پورت دریافت سمت local" 5001)" || return 1
-    send="$(ask_transport "ترنسپورت ارسال از این سمت" udp)" || return 1
-    recv="$(ask_transport "ترنسپورت دریافت از سمت مقابل" tcp)" || return 1
+    send="$(ask_transport "نوع ارتباط خروجی (اگر مطمئن نیستید Enter بزنید)" udp)" || return 1
+    recv="$(ask_transport "نوع ارتباط ورودی (اگر مطمئن نیستید Enter بزنید)" tcp)" || return 1
     listen=""; remote=""; remote_port=0; recv_port=0
   fi
-  read -r -p "نام کارت شبکه برای XDP (اختیاری؛ خالی = غیرفعال): " xdp
+  xdp=""
 
   export MODE="$mode" SPOOF_IP="$spoof_ip" SPOOF_FILE="$spoof_file" SPOOF_PORT="$spoof_port"
   export PEER="$peer" SEND_TRANSPORT="$send" RECV_TRANSPORT="$recv" XDP_INTERFACE="$xdp"
