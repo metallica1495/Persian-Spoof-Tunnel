@@ -53,7 +53,9 @@ sudo bash install.sh
 | سرویس هسته | `spoof-tunnel.service` |
 | داده‌های پنل رسمی بالادستی | `/etc/spoof-panel` |
 | باینری پنل رسمی بالادستی | `/usr/local/bin/spoof-panel` |
-| تنظیمات احراز هویت پنل وب فارسی | `/etc/persian-spoof-panel/auth.json` |\n| برنامه پنل وب فارسی | `/opt/persian-spoof-panel/app.py` |\n| پشتیبان‌ها | `/root/persian-spoof-tunnel-backups` |
+| تنظیمات احراز هویت پنل وب فارسی | `/etc/persian-spoof-panel/auth.json` |
+| برنامه پنل وب فارسی | `/opt/persian-spoof-panel/app.py` |
+| پشتیبان‌ها | `/root/persian-spoof-tunnel-backups` |
 
 فایل کانفیگ هسته با مجوز `600` و پوشه آن با مجوز محدود root ساخته می‌شود. کانفیگ‌ها، فایل‌های IP، رمزهای پنل و پشتیبان‌ها را در GitHub بارگذاری نکنید.
 
