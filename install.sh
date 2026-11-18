@@ -28,6 +28,7 @@ install_dependencies(){
   command -v python3 >/dev/null || missing+=(python3)
   command -v sha256sum >/dev/null || missing+=(coreutils)
   command -v tar >/dev/null || missing+=(tar)
+  command -v awk >/dev/null || missing+=(gawk)
   (( ${#missing[@]} == 0 )) && { ok "پیش‌نیازهای لازم نصب هستند."; return 0; }
   say "پیش‌نیازهای لازم پیدا نشد؛ نصب خودکار آغاز می‌شود: ${missing[*]}"
   if command -v apt-get >/dev/null; then
@@ -404,6 +405,7 @@ easy_install(){
   if [[ -f "$CORE_CONFIG" ]]; then
     warn "کانفیگ قبلی پیدا شد؛ قبل از تغییر، پشتیبان گرفته می‌شود."
     core_backup
+    systemctl stop "$CORE_SERVICE" 2>/dev/null || true
   fi
   install_core || return 1
   configure_core || return 1
