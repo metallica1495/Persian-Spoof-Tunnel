@@ -57,6 +57,31 @@ def verify(username, password):
     except Exception:
         return False
 
+def translate_state(value):
+    states = {"active": "فعال", "inactive": "متوقف", "failed": "دارای خطا",
+              "activating": "در حال راه‌اندازی", "deactivating": "در حال توقف",
+              "unknown": "نامشخص", "not-found": "یافت نشد"}
+    return states.get(value.strip(), value.strip() or "نامشخص")
+
+def network_info():
+    """بررسی فقط‌خواندنی شبکه و فایروال؛ بدون تغییر تنظیمات سیستم."""
+    interfaces = run(["ip", "-brief", "address"]) if shutil.which("ip") else "ابزار ip نصب نیست."
+    route = run(["ip", "route", "show", "default"]) if shutil.which("ip") else "نامشخص"
+    firewall = []
+    if shutil.which("ufw"):
+        firewall.append("UFW: " + translate_state(run(["ufw", "is-active"])))
+    if shutil.which("firewall-cmd"):
+        firewall.append("Firewalld: " + translate_state(run(["firewall-cmd", "--state"])))
+    if shutil.which("nft"):
+        result = run(["nft", "list", "ruleset"])
+        firewall.append("Nftables: " + ("دارای قواعد" if result and "not found" not in result.lower() else "بدون قواعد قابل نمایش"))
+    if shutil.which("iptables"):
+        result = run(["iptables", "-S"])
+        firewall.append("Iptables: " + ("دارای قواعد" if result else "قواعدی برای نمایش وجود ندارد"))
+    return {"رابط‌های شبکه و IP": interfaces or "اطلاعاتی یافت نشد",
+            "مسیر پیش‌فرض شبکه": route or "مسیر پیش‌فرض ثبت نشده",
+            "وضعیت فایروال": "\n".join(firewall) if firewall else "ابزار شناخته‌شده فایروال یافت نشد"}
+
 def stats():
     mem = {}
     try:
@@ -69,13 +94,13 @@ def stats():
     total, avail = mem.get("MemTotal", 0), mem.get("MemAvailable", 0)
     disk = shutil.disk_usage("/")
     return {
-        "hostname": os.uname().nodename,
-        "kernel": os.uname().release,
-        "uptime": Path("/proc/uptime").read_text().split()[0] if Path("/proc/uptime").exists() else "?",
-        "ram": f"{(total-avail)/1024**3:.1f} / {total/1024**3:.1f} GB" if total else "نامشخص",
-        "disk": f"{disk.used/1024**3:.1f} / {disk.total/1024**3:.1f} GB",
-        "core": run(["systemctl", "is-active", "spoof-tunnel"]) or "نامشخص",
-        "panel": run(["systemctl", "is-active", "persian-spoof-panel"]) or "نامشخص",
+        "نام میزبان": os.uname().nodename,
+        "نسخه هسته لینوکس": os.uname().release,
+        "مدت روشن بودن سرور (ثانیه)": Path("/proc/uptime").read_text().split()[0] if Path("/proc/uptime").exists() else "نامشخص",
+        "مصرف RAM (استفاده‌شده / کل)": f"{(total-avail)/1024**3:.1f} / {total/1024**3:.1f} گیگابایت" if total else "نامشخص",
+        "فضای دیسک (استفاده‌شده / کل)": f"{disk.used/1024**3:.1f} / {disk.total/1024**3:.1f} گیگابایت",
+        "وضعیت سرویس تونل": translate_state(run(["systemctl", "is-active", "spoof-tunnel"])),
+        "وضعیت پنل مدیریت": translate_state(run(["systemctl", "is-active", "persian-spoof-panel"])),
     }
 
 def page(title, body):
@@ -90,7 +115,7 @@ small,.muted{color:#9ca3af}.value{font-size:20px;margin-top:9px;direction:ltr;te
 input,button{font:inherit;border-radius:8px;padding:11px;border:1px solid #3b4b62;background:#0b1220;color:#fff;width:100%;margin:6px 0}
 button{background:#155e75;border:0;cursor:pointer;font-weight:bold}button.danger{background:#7f1d1d}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080e18;padding:14px;border-radius:8px;direction:ltr;text-align:left;max-height:360px;overflow:auto}
 a{color:#67e8f9}.actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.inline{display:inline}
-</style></head><body><main>""" + body + """<p class="muted">Persian Spoof Tunnel · پنل محلی مدیریتی · فقط دسترسی مجاز</p></main></body></html>"""
+</style></head><body><main>""" + body + """<p class="muted">پنل مدیریتی تونل · دسترسی محلی و محدود به مدیر</p></main></body></html>"""
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "PersianSpoofPanel"
@@ -137,7 +162,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             s = stats()
             cards = "".join('<div class="card"><small>'+html.escape(k)+'</small><div class="value">'+html.escape(str(v))+'</div></div>' for k,v in s.items())
-            body = '<h1>مدیریت فارسی Spoof Tunnel</h1><div class="grid">'+cards+'</div>'
+            body = '<h1>پنل مدیریت تونل</h1><div class="grid">'+cards+'</div>'
+            net = network_info()
+            net_rows = "".join('<div class="card"><h2>'+html.escape(k)+'</h2><pre>'+html.escape(v)+'</pre></div>' for k,v in net.items())
+            body += '<section class="card"><h2>بررسی شبکه و فایروال (فقط گزارش)</h2><p class="muted">این قسمت فقط اطلاعات را می‌خواند و هیچ IP، پورت یا قانون فایروالی را تغییر نمی‌دهد.</p><div class="grid">'+net_rows+'</div></section>'
             body += '<section class="card"><h2>عملیات سرویس هسته</h2><div class="actions">'
             for action,label in (("status","وضعیت"),("restart","راه‌اندازی مجدد"),("stop","توقف"),("start","شروع")):
                 body += '<form method="post" action="/action"><input type="hidden" name="csrf" value="'+csrf+'"><input type="hidden" name="action" value="'+action+'"><button'+(' class="danger"' if action=="stop" else '')+'>'+label+'</button></form>'
@@ -197,7 +225,7 @@ def main():
     if a.serve:
         if not AUTH_FILE.exists(): raise SystemExit("ابتدا مدیر را با --setup-admin بسازید.")
         httpd = ThreadingHTTPServer((HOST, PORT), Handler)
-        print(f"Admin panel listening on http://{HOST}:{PORT}")
+        print(f"پنل مدیریت روی http://{HOST}:{PORT} آماده است.")
         httpd.serve_forever()
 
 if __name__ == "__main__":
